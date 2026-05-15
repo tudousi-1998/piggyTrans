@@ -86,6 +86,10 @@ jobs:
             | `*_x64-setup.exe` | Windows 64 位 |
 
             macOS 若提示无法验证开发者：右键应用 → **打开**。
+
+            安装后若被拦截，可执行：
+            `xattr -dr com.apple.quarantine /Applications/PiggyTrans.app`
           releaseDraft: false
           prerelease: false
+          tauriScript: npm run tauri
           args: ${{ matrix.target != '' && format('--target {0}', matrix.target) || '' }}
