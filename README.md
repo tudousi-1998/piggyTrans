@@ -1,6 +1,6 @@
 # 小猪翻译（PiggyTrans）
 
-跨平台（macOS / Windows）的轻量划词翻译桌面应用，基于 **Tauri 2 + React + TypeScript**。翻译服务沿用百度翻译 HTTP API。
+跨平台（macOS / Windows）的轻量划词翻译桌面应用，基于 **Tauri 2 + React + TypeScript**，支持自定义大模型翻译
 
 ## 环境要求
 
@@ -15,7 +15,7 @@ npm install
 npm run tauri dev
 ```
 
-首次在 macOS 上需为终端 / IDE 授予「辅助功能」权限（与旧版 Swift 应用相同逻辑）。
+首次在 macOS 上需为终端 / IDE 授予「辅助功能」权限
 
 ## 配置
 
@@ -30,10 +30,6 @@ npm run tauri build
 ```
 
 产物位于 `src-tauri/target/release/`（具体以 Tauri 输出为准）。
-
-## 与旧版 Swift 应用的关系
-
-原 Swift 版已移至仓库中的 `PiggyTrans-old/` 目录（若存在），本目录 `piggytrans/` 为全新实现。
 
 ## 许可
 
