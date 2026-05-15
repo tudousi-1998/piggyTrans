@@ -58,7 +58,10 @@ pub fn configure(ns_window: *mut c_void) {
 /// 与旧版 Swift `OverlayWindowLayout.placeWindowNearMouse` 一致（Cocoa 坐标系）。
 pub fn place_near_mouse(ns_window: *mut c_void) {
     with_window(ns_window, |window| {
-        let mtm = MainThreadMarker::new().expect("overlay placement requires main thread");
+        let Some(mtm) = MainThreadMarker::new() else {
+            eprintln!("piggytrans: place_near_mouse skipped — not on main thread");
+            return;
+        };
         let mouse = NSEvent::mouseLocation();
         let frame = window.frame();
         let size = frame.size;
@@ -101,7 +104,10 @@ pub fn place_near_mouse(ns_window: *mut c_void) {
 
 pub fn activate_and_order_front(ns_window: *mut c_void) {
     with_window(ns_window, |window| {
-        let mtm = MainThreadMarker::new().expect("overlay presentation requires main thread");
+        let Some(mtm) = MainThreadMarker::new() else {
+            eprintln!("piggytrans: activate_and_order_front skipped — not on main thread");
+            return;
+        };
         configure(ns_window);
 
         // 顺序与旧版 Swift 完全一致：先 makeKeyAndOrderFront，再 activate。

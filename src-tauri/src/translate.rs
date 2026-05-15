@@ -170,7 +170,7 @@ pub async fn translate_custom_llm(
     let system_prompt =
         "你是专业翻译助手。只输出译文，不要解释、不要加引号或前后缀。必须保留原文中的换行结构（有几行输入就输出几行译文）。";
     let user_prompt = format!(
-        "将以下文本译为{target_label}。规则与百度通用翻译一致：中英混杂译成中文；纯中文译成英文；否则译成中文。保留换行。\n\n{cleaned}"
+        "将以下文本译为{target_label}。规则与百度通用翻译一致：中英混杂译成英文；纯中文译成英文；否则译成中文。保留换行。\n\n{cleaned}"
     );
 
     let url = chat_completions_url(&settings.api_base);
@@ -325,14 +325,10 @@ fn chat_completions_url(api_base: &str) -> String {
     }
 }
 
-/// 中英混杂 → 译为中文；纯中文 → 英；否则 → 中。
+/// 含中文（含中英混杂）→ 英文；纯英文等 → 中文。
 pub fn resolve_target_language(text: &str) -> &'static str {
     let has_cjk = text.chars().any(|c| ('\u{4e00}'..='\u{9fff}').contains(&c));
-    let has_latin = text.chars().any(|c| c.is_ascii_alphabetic());
-
-    if has_cjk && has_latin {
-        "zh"
-    } else if has_cjk && !has_latin {
+    if has_cjk {
         "en"
     } else {
         "zh"

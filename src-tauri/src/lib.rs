@@ -32,23 +32,13 @@ fn is_settings_window_open(app: &tauri::AppHandle) -> bool {
         .unwrap_or(false)
 }
 
-async fn handle_translate_hotkey(app: tauri::AppHandle) {
-    if is_settings_window_open(&app) {
+/// 全局快捷键：整段逻辑在主线程执行（AX / NSWindow / 模拟 Cmd+C）。
+fn handle_translate_hotkey_on_main(app: &tauri::AppHandle) {
+    if is_settings_window_open(app) {
         return;
     }
 
-    // macOS 上 Accessibility / 模拟按键必须在主线程执行，否则可能崩溃。
-  let (tx, rx) = std::sync::mpsc::sync_channel(1);
-  if let Err(e) = app.run_on_main_thread(move || {
     let outcome = fetch_selection_on_main_thread();
-    let _ = tx.send(outcome);
-  }) {
-    eprintln!("piggytrans: schedule selection on main thread failed: {e}");
-  }
-  let outcome = rx
-    .recv()
-    .unwrap_or(selection::SelectionOutcome::Empty);
-
     let payload = match outcome {
         selection::SelectionOutcome::PermissionDenied => OverlayOpenPayload {
             mode: "permission".into(),
@@ -67,14 +57,8 @@ async fn handle_translate_hotkey(app: tauri::AppHandle) {
         },
     };
 
-    let payload_for_ui = payload.clone();
-    let app_for_ui = app.clone();
-    if let Err(e) = app.run_on_main_thread(move || {
-        if let Err(err) = present_overlay(&app_for_ui, &payload_for_ui) {
-            eprintln!("piggytrans: present overlay failed: {err}");
-        }
-    }) {
-        eprintln!("piggytrans: schedule overlay on main thread failed: {e}");
+    if let Err(err) = present_overlay(app, &payload) {
+        eprintln!("piggytrans: present overlay failed: {err}");
     }
 }
 
@@ -194,10 +178,13 @@ fn register_hotkey(app: &tauri::AppHandle, hotkey: &str) -> Result<(), String> {
         if is_settings_window_open(&h) {
             return;
         }
-        let hh = h.clone();
-        tauri::async_runtime::spawn(async move {
-            handle_translate_hotkey(hh).await;
-        });
+        let app = h.clone();
+        if let Err(e) = app.run_on_main_thread({
+            let app = app.clone();
+            move || handle_translate_hotkey_on_main(&app)
+        }) {
+            eprintln!("piggytrans: hotkey main-thread dispatch failed: {e}");
+        }
     })
     .map_err(|e| e.to_string())?;
     Ok(())
