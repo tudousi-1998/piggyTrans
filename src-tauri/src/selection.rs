@@ -525,16 +525,19 @@ mod macos_ax {
             if system.is_null() {
                 return None;
             }
-            let app_cf = copy_attr(system, "AXFocusedApplication")?;
-            let app_el = as_ax_element(app_cf.as_concrete_TypeRef())?;
-            let mut pid: i32 = 0;
-            let err = AXUIElementGetPid(app_el, &mut pid);
+            let result = (|| {
+                let app_cf = copy_attr(system, "AXFocusedApplication")?;
+                let app_el = as_ax_element(app_cf.as_concrete_TypeRef())?;
+                let mut pid: i32 = 0;
+                let err = AXUIElementGetPid(app_el, &mut pid);
+                if err == AX_K_SUCCESS && pid > 0 {
+                    Some(pid)
+                } else {
+                    None
+                }
+            })();
             CFRelease(system as CFTypeRef);
-            if err == AX_K_SUCCESS && pid > 0 {
-                Some(pid)
-            } else {
-                None
-            }
+            result
         }
     }
 
@@ -670,7 +673,12 @@ mod macos_ax {
 }
 
 #[cfg(target_os = "macos")]
-pub use macos_ax::request_trust_prompt;
+pub use macos_ax::{is_process_trusted, request_trust_prompt};
 
 #[cfg(not(target_os = "macos"))]
 pub fn request_trust_prompt() {}
+
+#[cfg(not(target_os = "macos"))]
+pub fn is_process_trusted() -> bool {
+    true
+}

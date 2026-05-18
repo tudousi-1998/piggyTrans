@@ -33,9 +33,38 @@ fn is_settings_window_open(app: &tauri::AppHandle) -> bool {
 }
 
 /// 全局快捷键：整段逻辑在主线程执行（AX / NSWindow / 模拟 Cmd+C）。
+/// 任何环节 panic 都不应导致进程退出。
 fn handle_translate_hotkey_on_main(app: &tauri::AppHandle) {
+    let app_for_panic = app.clone();
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+        handle_translate_hotkey_inner(&app_for_panic);
+    }));
+    if let Err(panic) = result {
+        let msg = panic_message(&panic);
+        eprintln!("piggytrans: hotkey handler panicked: {msg}");
+    }
+}
+
+fn handle_translate_hotkey_inner(app: &tauri::AppHandle) {
     if is_settings_window_open(app) {
         return;
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        // 未授权时直接弹「权限」浮窗，避免后续 AX / CGEvent 调用进入未知状态。
+        if !selection::is_process_trusted() {
+            selection::request_trust_prompt();
+            let payload = OverlayOpenPayload {
+                mode: "permission".into(),
+                text: None,
+                anchor_near_cursor: true,
+            };
+            if let Err(err) = present_overlay(app, &payload) {
+                eprintln!("piggytrans: present overlay (permission) failed: {err}");
+            }
+            return;
+        }
     }
 
     let outcome = fetch_selection_on_main_thread();
@@ -60,6 +89,16 @@ fn handle_translate_hotkey_on_main(app: &tauri::AppHandle) {
     if let Err(err) = present_overlay(app, &payload) {
         eprintln!("piggytrans: present overlay failed: {err}");
     }
+}
+
+fn panic_message(panic: &Box<dyn std::any::Any + Send>) -> String {
+    if let Some(s) = panic.downcast_ref::<&'static str>() {
+        return (*s).to_string();
+    }
+    if let Some(s) = panic.downcast_ref::<String>() {
+        return s.clone();
+    }
+    "<non-text panic payload>".to_string()
 }
 
 fn present_overlay(app: &tauri::AppHandle, payload: &OverlayOpenPayload) -> Result<(), String> {
@@ -301,6 +340,15 @@ pub fn run() {
                 .unwrap_or_default();
             register_hotkey(&handle, &settings_i.hotkey)?;
             let _ = apply_autostart(&handle, settings_i.launch_at_login);
+
+            // 启动时主动检查辅助功能权限：未授权则弹出系统对话框，
+            // 避免用户按下快捷键时第一次才弹框（且可能导致状态异常）。
+            #[cfg(target_os = "macos")]
+            {
+                if !selection::is_process_trusted() {
+                    selection::request_trust_prompt();
+                }
+            }
 
             let menu = Menu::with_items(
                 app,
