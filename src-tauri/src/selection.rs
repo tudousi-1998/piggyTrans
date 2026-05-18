@@ -394,6 +394,29 @@ mod macos_ax {
         Some(cf as AXUIElementRef)
     }
 
+    fn ax_ref(owned: &CFType) -> Option<AXUIElementRef> {
+        unsafe { as_ax_element(owned.as_concrete_TypeRef()) }
+    }
+
+    /// 沿 AX 父链向上查找；`current` 必须持有当前节点的 +1 引用，避免父节点 CF 释放后悬空指针。
+    fn walk_ax_parent_chain<F, R>(mut current: CFType, mut visit: F) -> Option<R>
+    where
+        F: FnMut(AXUIElementRef) -> Option<R>,
+    {
+        for _ in 0..12 {
+            let el = ax_ref(&current)?;
+            if let Some(found) = visit(el) {
+                return Some(found);
+            }
+            let parent = copy_attr(el, "AXParent")?;
+            if ax_ref(&parent).is_none() {
+                return None;
+            }
+            current = parent;
+        }
+        None
+    }
+
     fn copy_attr(element: AXUIElementRef, name: &str) -> Option<CFType> {
         unsafe {
             let attr = CFString::new(name);
@@ -484,33 +507,23 @@ mod macos_ax {
             Some(cf) => cf,
             None => return false,
         };
-        let app_el = unsafe { match as_ax_element(app_cf.as_concrete_TypeRef()) {
+        let app_el = match ax_ref(&app_cf) {
             Some(el) => el,
             None => return false,
-        }};
+        };
         let elem_cf = match copy_attr(app_el, "AXFocusedUIElement") {
             Some(cf) => cf,
             None => return false,
         };
-        let mut element = unsafe { match as_ax_element(elem_cf.as_concrete_TypeRef()) {
-            Some(el) => el,
-            None => return false,
-        }};
         let action = CFString::new("AXCopy");
-        for _ in 0..12 {
+        walk_ax_parent_chain(elem_cf, |element| {
             if ax_perform_copy(element, &action) {
-                return true;
+                Some(true)
+            } else {
+                None
             }
-            let par_cf = match copy_attr(element, "AXParent") {
-                Some(cf) => cf,
-                None => break,
-            };
-            element = unsafe { match as_ax_element(par_cf.as_concrete_TypeRef()) {
-                Some(el) => el,
-                None => break,
-            }};
-        }
-        false
+        })
+        .unwrap_or(false)
     }
 
     fn ax_perform_copy(element: AXUIElementRef, action: &CFString) -> bool {
@@ -598,32 +611,22 @@ mod macos_ax {
             Some(cf) => cf,
             None => return false,
         };
-        let app_el = unsafe { match as_ax_element(app_cf.as_concrete_TypeRef()) {
+        let app_el = match ax_ref(&app_cf) {
             Some(el) => el,
             None => return false,
-        }};
+        };
         let elem_cf = match copy_attr(app_el, "AXFocusedUIElement") {
             Some(cf) => cf,
             None => return false,
         };
-        let mut element = unsafe { match as_ax_element(elem_cf.as_concrete_TypeRef()) {
-            Some(el) => el,
-            None => return false,
-        }};
-        for _ in 0..12 {
+        walk_ax_parent_chain(elem_cf, |element| {
             if element_has_selection(element) {
-                return true;
+                Some(true)
+            } else {
+                None
             }
-            let par_cf = match copy_attr(element, "AXParent") {
-                Some(cf) => cf,
-                None => break,
-            };
-            element = unsafe { match as_ax_element(par_cf.as_concrete_TypeRef()) {
-                Some(el) => el,
-                None => break,
-            }};
-        }
-        false
+        })
+        .unwrap_or(false)
     }
 
     pub fn selected_text_via_accessibility() -> Option<String> {
@@ -658,17 +661,9 @@ mod macos_ax {
 
     fn walk_focused_selection(system: AXUIElementRef) -> Option<String> {
         let app_cf = copy_attr(system, "AXFocusedApplication")?;
-        let app_el = unsafe { as_ax_element(app_cf.as_concrete_TypeRef())? };
+        let app_el = ax_ref(&app_cf)?;
         let elem_cf = copy_attr(app_el, "AXFocusedUIElement")?;
-        let mut element = unsafe { as_ax_element(elem_cf.as_concrete_TypeRef())? };
-        for _ in 0..12 {
-            if let Some(t) = selected_text_from_element(element) {
-                return Some(t);
-            }
-            let par_cf = copy_attr(element, "AXParent")?;
-            element = unsafe { as_ax_element(par_cf.as_concrete_TypeRef())? };
-        }
-        None
+        walk_ax_parent_chain(elem_cf, selected_text_from_element)
     }
 }
 
